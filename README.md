@@ -1,22 +1,112 @@
-# AWS-VPC-project
-Secure VPC Setup with EC2 Instances
-# About the Project: VPC with public-private subnet in production
-![image](https://github.com/user-attachments/assets/4331d1d5-22e6-4b90-884c-bc844c6df146)
+# AWS VPC Project
+
+## Secure VPC Setup with EC2 Instances
+
+### About the Project: VPC with Public-Private Subnets in Production
+![VPC Architecture](https://github.com/user-attachments/assets/4331d1d5-22e6-4b90-884c-bc844c6df146)
+
+## Implementation
+
+### 1. Create a VPC with Public and Private Subnets
+- Create a VPC with **2 public and 2 private subnets** (A and B) in different availability zones.
+- Deploy **NAT Gateways** in each public subnet.
+- Uncheck the **S3 as endpoint**, as it is not required for this project.
+- If you encounter an error regarding **maximum Elastic IPs reached**, release some IPs.
+
+#### What is **Elastic IP**?
+- An Elastic IP is a **static public IP** assigned to an instance. Even if the instance restarts, the IP remains the same.
+- Elastic IP is assigned to the **NAT Gateway** to provide internet access to private instances.
+
+#### What is **NAT Gateway**?
+- It **masks the IP** of applications in private subnets by using the NAT gateway’s public IP.
+
+### 2. Create an Auto Scaling Group
+- Auto Scaling cannot be created directly; instead, we use a **Launch Template**.
+- This template can be reused across multiple auto-scaling groups.
+
+#### Steps:
+1. Select **OS Image - Ubuntu**.
+2. Choose an **Instance type**.
+3. In **Security Group**, select the VPC created for this project.
+4. Configure **Inbound Rules**:
+   - **SSH (Type: SSH, Source: Anywhere)**.
+   - **Custom TCP (Port: 8000)** for the application.
+5. Create the **Launch Template**.
+6. Create the **Auto Scaling Group** using the template.
+7. In **Network Settings**, select the VPC and **private subnets**.
+8. Set the desired instance capacity.
+9. Verify that instances are created across different **Availability Zones**.
+
+### 3. Access Private Instances Using a Bastion Host
+- Private instances **do not have public IPs**, so we cannot SSH into them directly.
+
+#### What is **Bastion Host**?
+- A **Bastion Host** is an EC2 instance in the **public subnet** that allows secure access to instances in the private subnet.
+- It acts as a **mediator** between external users and private instances.
+
+#### Steps to Access Private Instances:
+1. **Create a Bastion Host EC2** in the same VPC.
+2. Copy the **private key** from your local machine to the Bastion EC2:
+   ```bash
+   scp -i /Users/Downloads/practice.pem /Users/Downloads/practice.pem ubuntu@<public-ip-of-bastion>:/home/ubuntu
+   ```
+3. SSH into the Bastion host:
+   ```bash
+   ssh -i practice.pem ubuntu@<public-ip>
+   ```
+4. From the Bastion, SSH into a **private instance**:
+   ```bash
+   ssh -i practice.pem ubuntu@<private-ip>
+   ```
+5. If you get a **permission error**, change the file permissions:
+   ```bash
+   chmod 400 practice.pem
+   ```
+6. Repeat for **Private Instance B**.
+
+### 4. Install a Python Application in Private Instances
+1. Create an `index.html` file in both **Private Instances A & B**:
+   ```html
+   <!DOCTYPE html>
+   <html>
+   <body>
+   <h1>My First AWS Project - Deploying Apps in Subnets</h1>
+   </body>
+   </html>
+   ```
+2. Run the Python server inside private instances:
+   ```bash
+   python3 -m http.server 8000
+   ```
+
+### 5. Create a Load Balancer and Attach Target Groups
+- **Application Load Balancer (ALB)** handles **HTTP/HTTPS traffic (Layer 7)**.
+
+#### Steps to Create Load Balancer:
+1. Create an **Application Load Balancer**.
+2. **Scheme**: Internet-facing.
+3. **IP Type**: IPv4.
+4. **VPC**: Select the project VPC.
+5. **Subnets**: Select only the **public subnets**.
+6. **Security Group**: Select the VPC security group.
+7. **Listeners & Routing**:
+   - **Protocol**: HTTP.
+   - **Port**: 80.
+   - **Target Group**: Port **8000**, add **Private Instances A & B** as targets.
+8. If you get an **error stating listener port is unavailable**, update the **security group** to allow HTTP traffic on **port 80**.
+
+![Listener Port Error](https://github.com/user-attachments/assets/d821fd1b-1a62-49b7-8a3c-1a4d5f114d73)
+
+#### Fix: Allow HTTP Traffic in Security Group
+
+![Allow HTTP Traffic](https://github.com/user-attachments/assets/de57af10-df6f-4af8-a37f-6b9c9790ca8c)
+
+### 6. Verify the Application
+- Copy the **Load Balancer DNS/IP** and paste it into the browser.
+- You should see the **deployed application from the private subnets**.
+
+![Application Output](https://github.com/user-attachments/assets/51439907-c4eb-466c-8285-b2ba79c09a62)
 
 
-# Implementation
-* Create a VPC with 2 public and Private Subnets in different availability zones with NAT Gateways in each public subnet.
-  * I got an error while creating the VPC saying that maximum number of Elastic IP have been reached. so I released some IP's. **What is _Elastic IP_?:** Lets say we have assigned EC2 Instance with an Elastic IP, even if the EC2 instance goes down and comes back the IP will remain same. It is a Static IP address because it never changes.
-  * Here elastic IP is assigned to NAT gateway. **What is _NAT Gateway_:** It will mask the IP address of my application in the private subnet with the public IP address of NAT gateway.
-* Create a Auto Scaling Group.
-  * Auto scaling in AWS cannot be created directly, we can use launch template we can use this template in multiple autoscaling groups or this template act as reference to understand how autoscaling group is behaving.
-  * Select the **OS Image-Ubuntu**, Instance type, in **security group - select the vpc that we created for the project**, and inbount traffic allow **Type-ssh** from **source type-anywhere**, add another security group for application deployed in the instances **Type-custom TCP**, **port - 8000**, Click Launch Template.
-  * Now create a auto scaling by using the launch template, In network select the Vpc and private subnets because we want the instances in private subnet to auto scale, for this project we dont need load balancing. Select the desired capacity you need.
-  * Now check the instances will be created in different availability zones.
-# Install application inside the instaces.
-  * Go to the private instaces and try login you cannot because you dont have the public IP thats because we have not given public IP to secure it. Then how do we login in to it?
-  * **BASTION:** create a Bastion host Ec2. It acts as mediator between external users or public subnet. After creating Bastion access the private subnet from Bastion. While creating make sure the Bastion should be created in the same VPC. You need to have the keyvalue pair to be copied in the bastian Ec2 fro your PC by using secure copy
-     > ```scp -i /Users/Downloads/practice.pem /Users/Downloads/practice.pem ubuntu@<publicip of bastion ec2>:/home/ubuntu```
-  * Now ssh to bastion ```ssh -i ubuntu@<IP>``` you can see the pem file in the bastion if you dont see the pem you are unable login to the private subnets make sure you have the pem file copied.
-  * 
+# 
     
